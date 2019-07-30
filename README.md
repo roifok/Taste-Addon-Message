@@ -1,0 +1,2 @@
+# Taste Addon Message
+ TasteAddonMessage
