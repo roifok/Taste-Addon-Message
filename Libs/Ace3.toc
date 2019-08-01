@@ -1,16 +1,4 @@
-## Interface: 60000
-## X-Curse-Packaged-Version: Release-r1122
-## X-Curse-Project-Name: Ace3
-## X-Curse-Project-ID: ace3
-## X-Curse-Repository-ID: wow/ace3/mainline
-## X-Curse-Packaged-Version: r2
-## X-Curse-Project-Name: Mage Portal Whisper
-## X-Curse-Project-ID: mage-portal-whisper
-## X-Curse-Repository-ID: wow/mage-portal-whisper/mainline
-## X-Curse-Packaged-Version: r37
-## X-Curse-Project-Name: Mage Portal Whisper
-## X-Curse-Project-ID: mage-portal-whisper
-## X-Curse-Repository-ID: wow/mage-portal-whisper/mainline
+## Interface: 80200
 
 ## Title: Lib: Ace3
 ## Notes: AddOn development framework

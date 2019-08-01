@@ -2,36 +2,92 @@
 -- Update: 30-07-2019
 
 TasteMsgAddonHelper = LibStub("AceAddon-3.0"):NewAddon("TasteMsgAddonHelper", "AceConsole-3.0", "AceEvent-3.0", "AceTimer-3.0", "AceComm-3.0", "AceSerializer-3.0")
-
 local L = LibStub("AceLocale-3.0"):GetLocale("TasteMsgAddonHelper", true)
 local LibC = LibStub:GetLibrary("LibCompress")
 local LibCE = LibC:GetAddonEncodeTable()
+local addonName, addon = ...
+local TasteMsgAddonHelperLDB = LibStub("LibDataBroker-1.1"):NewDataObject("TasteMsgAddonHelper", {
+	type = "launcher",
+	label = "Taste Silas Helper",
+	icon = "Interface\\Icons\\Trade_alchemy_potione1",
+	OnClick = function(self, button)
+	    print("Taste Silas Helper loaded.")
+        InterfaceOptionsFrame_OpenToCategory(TasteMsgAddonHelper.configFrame)
+		InterfaceOptionsFrame_OpenToCategory(TasteMsgAddonHelper.configFrame)
+    end,
+})
+local icon = LibStub("LibDBIcon-1.0")
 local debug = false
 local playername = ''
-local default_whisper = "Sorry but no Silas up yet :("
-
 local player_class = UnitClass("player")
+local default_whisper = "Sorry mate but no Silas up yet :("
 
+-- init function
 function isReady()
     return true
 end
 
+-- return boolean for current receiver alchemist
 function SilasBuffIsUp()	
-	if UnitBuff("player", SilasId) then 
+    local SilasBuffId = 293945
+	if UnitBuff("player", SilasBuffId) then 
 	    return true
 	end
 	return false
 end
 
+-- return Silas Item duration 
+function SilasItemDuration()
+    --Silas' Potion of Prosperity buff id
+    local SilasItemId = 156633	
+	local itemtimeleft = 0
+	
+	--TODO improve this maybe
+	--Scan every slot of everybags to find Silas item
+    for i = 0, 4 do
+        for j = 1, GetContainerNumSlots(i) do
+            local itemID = GetContainerItemID(i, j)
+            --If we find Silas item then get cooldown from tooltip
+			if itemID == SilasItemId then
+                GameTooltip:SetOwner(UIParent,"ANCHOR_NONE")
+                GameTooltip:SetBagItem(i,j)
+				--Scan all the tooltip description
+                for k = 1, GameTooltip:NumLines() do
+				    --Handle enUS or frFR 
+                    local timeleft = (_G["GameTooltipTextLeft"..k]:GetText() or ""):match("([%d,]+) Duration:") or (_G["GameTooltipTextLeft"..k]:GetText() or ""):match("([%d,]+) Durée:")
+                    if timeleft then
+                        timeleft = timeleft:gsub(",","")
+                        itemtimeleft = itemtimeleft + tonumber(timeleft)
+                    break
+                    end
+                end
+            end
+        end
+    end
+    return itemtimeleft or 0
+end
+local remain_item_whisper = "Remaining time on Silas item :" .. SilasItemDuration() .. " minutes"
+
+-- return Silas Buff duration 
 function SilasBuffDuration()
     --Silas' Potion of Prosperity buff id
     local SilasId = 293946
+	local minexpirationTime = 0
     local _, _, _, _, _, duration, expirationTime = UnitBuff("player", SilasId)
     
-	return expirationTime or 0
+	--Handle conversion to minutes if > 60sec
+	if expirationTime then 
+	    if  expirationTime > 60 then 
+	        minexpirationTime = expirationTime / 60
+		    return minexpirationTime or 0
+	    else
+	        return expirationTime or 0
+		end
+	else
+	    return expirationTime or 0
+	end
 end
-
-local timed_whisper = "Remaining time on Silas buff :" .. expirationTime .. " seconds"
+local remain_buff_whisper = "Remaining time on Silas buff : " .. SilasBuffDuration() .. " seconds & and item up for " .. SilasItemDuration() .. "seconds"
 
 -- get option value
 local function GetGlobalOptionLocal(info)
@@ -53,18 +109,23 @@ local defaults = {
 		enabled = isReady(),
 		whisper = default_whisper,
         auto_party = false,
-        display_whisper_overlay = false
+		use_msg_addon = false,
+		use_guild_channel = false,
+        display_whisper_overlay = false,
 	}
 }
 
+-- Messages to trigger addon
 function TasteMsgAddonHelper:ContainsSilasMessages(msg)
-  return (msg:lower():match('Silas') or 
-    msg:lower():match('Alchy') or 
-    msg:lower():match('Alchi') or 
-    msg:lower():match('!silas'))
+  return (
+    msg:lower():match('!silas') or 
+    msg:lower():match('!pots') or 
+    msg:lower():match('!potions') or 
+	msg:lower():match('!tsh')
+	)
 end
 
--- a filter to hide all yelled messaged containing certain text
+-- TODO a filter to hide all yelled messaged containing certain text
 function NoWhisperWindow(self,event,msg)
   return TasteMsgAddonHelper:ContainsSilasMessages(msg)
 end
@@ -104,7 +165,7 @@ local options = {
 	childGroups = "tab",
 	args = {
 		general_tab = {
-			name = "General",
+			name = "Silas Potion of Prosperity",
 			type = "group",
 			order = 10,
 			args = {
@@ -124,7 +185,19 @@ local options = {
                    type = "toggle",
 					order = 3,
 					name = "Enable whisper from player in overlay",
-					desc = "Enable or disable whisper in overlay.",
+					desc = "Enable or disable get the whisper of the player in an overlay and dissapear in 3 seconds.",
+					width = "full",
+					get =	GetGlobalOptionLocal,
+					set =	function (info, value)
+								SetGlobalOptionLocal(info, value)
+							end   
+                },
+                use_guild_channel = 
+                {
+                   type = "toggle",
+					order = 4,
+					name = "Enable addon only for guild channel",
+					desc = "Enable or disable Guild channel only.",
 					width = "full",
 					get =	GetGlobalOptionLocal,
 					set =	function (info, value)
@@ -134,9 +207,21 @@ local options = {
                 auto_party = 
                 {
                    type = "toggle",
-					order = 4,
+					order = 5,
 					name = "Enable auto accept party invites.",
 					desc = "Enable or disable auto accept party invites.",
+					width = "full",
+					get =	GetGlobalOptionLocal,
+					set =	function (info, value)
+								SetGlobalOptionLocal(info, value)
+							end   
+                },
+				use_msg_addon = 
+                {
+                   type = "toggle",
+					order = 6,
+					name = "[TEST] Enable use of MSG ADDON Channel",
+					desc = "[TEST] Enable or disable use of MSG ADDON Channel. Prefix in WA or TMW should be ' TSH '",
 					width = "full",
 					get =	GetGlobalOptionLocal,
 					set =	function (info, value)
@@ -146,10 +231,10 @@ local options = {
 				whisper = 
 				{
 					type = "input",
-					order = 5,
-					name = "Whisp Answer",
+					order = 7,
+					name = "Custom Whisp Answer",
 					multiline = true,
-					desc = "Custom whisp answer message",
+					desc = "Write your own custom whisp answer message",
 					width = "full",
 					get = GetGlobalOptionLocal,
 					set = function (info, value)
@@ -211,45 +296,72 @@ function TasteMsgAddonHelper:WhisperBack()
     -- Current Playername.. ( Yourself )
     playername = GetUnitName("player", true)
     f = CreateFrame("frame")
-    
-    -- Hook whisper event.
-    f:RegisterEvent("CHAT_MSG_WHISPER")
-    f:RegisterEvent("CHAT_MSG_ADDON")
-    f:RegisterEvent("CHAT MSG RAID")
-    f:RegisterEvent("CHAT MSG PARTY")
+    local destination = "WHISPER"
 	
-    -- Listen to OnEvent... from CHAT_MSG_WHISPER
+    -- Hook various chat event.
+	-- Msg Addon only
+    if TasteMsgAddonHelper.db.global.use_msg_addon then 
+	    f:RegisterEvent("CHAT_MSG_ADDON")
+		destination = "GUILD"
+	-- Guild channel only
+	elseif TasteMsgAddonHelper.db.global.use_guild_channel then 
+	    f:RegisterEvent("CHAT_MSG_GUILD")
+	    -- Define answer to guild channel
+		destination = "GUILD"
+	-- Classic chat events
+	else
+		f:RegisterEvent("CHAT_MSG_WHISPER")
+        f:RegisterEvent("CHAT_MSG_RAID")
+        f:RegisterEvent("CHAT_MSG_PARTY")
+		-- Define answer to whisper channel
+		destination = "WHISPER"
+	end
+	
+    
+	-- Listen to OnEvent... from chats events
     f:SetScript("OnEvent", function(self, event, msg, sender)
         
         -- Only do something when the addon is enabled.
 		if TasteMsgAddonHelper.db.global.enabled then
-            
-            if not isempty(TasteMsgAddonHelper.db.global.whisper) and SilasBuffIsUp() then
-                wmessage = TasteMsgAddonHelper.db.global.timed_whisper
+            -- If not available then return custom whisper
+            if not isempty(TasteMsgAddonHelper.db.global.whisper) and not SilasBuffIsUp() then
+                wmessage = TasteMsgAddonHelper.db.global.whisper				
+			-- else return remaining time on buff and item
 			else
-			    wmessage = TasteMsgAddonHelper.db.global.whisper
+			    wmessage = TasteMsgAddonHelper.db.global.remain_buff_whisper
             end
 						
-            -- Only do something when one of the incoming whispers contains Silas etc..
+            -- Only do something when one of the incoming messages contains Silas etc..
             if TasteMsgAddonHelper:ContainsSilasMessages(msg) then
-
+                -- If we got valid message
                 if not isempty(wmessage) then
-
+                    -- Debug false
                     if not debug then
 
                         -- if the player NOT matches yourself then..
                         if not sender:match(playername) then
+						    
+							-- Get the whisper of the player in an overlay and dissapear in 3 seconds.
                             if TasteMsgAddonHelper.db.global.display_whisper_overlay then
                                 InitTextFrame()
                                 MOD_TextFrame:Hide();
                                 MOD_TextMessage("|cffffff00"..sender.."|r: "..msg)
                             end
-                            -- Send a whisper to the player
-                            SendChatMessage(wmessage, "WHISPER", nil, sender);
-                        else
-                            TasteMsgAddonHelper:Printf("|cff40c040Why are you whispering yourself for Silas? hic....|r")
-                        end
+							
+							-- If MSG_ADDON is used, send prefix, message 
+							if TasteMsgAddonHelper.db.global.use_msg_addon then 
+							    C_ChatInfo.SendAddonMessage("TSH", wmessage)
+								-- Debug print
+								print("Message and prefix successfully sent")
+							else 
+                                -- Send an answer to the player depending of current channel used
+                                SendChatMessage(wmessage, destination, nil, sender);
+							end
 
+                        else
+                            TasteMsgAddonHelper:Printf("|cff40c040This should not happen? hic...|r")
+                        end
+                    -- Debug activated
                     else
                         -- if the player matches yourself then (DEBUGMODE)..
                         if sender:match(playername) then
@@ -264,7 +376,7 @@ function TasteMsgAddonHelper:WhisperBack()
 
                     else
                         -- No whisper given..
-                        TasteMsgAddonHelper:Printf('|cff40c040Please define a Whisper text in /tmah or interface --> TasteMsgAddonHelper |r')
+                        TasteMsgAddonHelper:Printf('|cff40c040Please define a Whisper text in /tsh or interface --> Taste Silas Helper |r')
                     end
 
             end
@@ -279,26 +391,26 @@ function TasteMsgAddonHelper:WhisperBack()
 end
 
 -- Called when the addon is disabled
-function TasteMsgAddonHelper:OnDisable()
-	
+function TasteMsgAddonHelper:OnDisable()	
 	-- unregister events
 	self:UnregisterAllEvents()
-	
+	icon:Hide("TasteMsgAddonHelper")
 	-- unregister comm events
 	self:UnregisterAllComm()
-	self:UnregisterChatCommand("tmah")
+	self:UnregisterChatCommand("tsh")
 	
 end
 
 -- Called when the addon is enabled
 function TasteMsgAddonHelper:OnEnable()
-    
-    -- If this is a Mage than we can go further.
+    icon:Register("TasteMsgAddonHelper", TasteMsgAddonHelperLDB, TasteMsgAddonHelper.db.global.minimap)
+    -- If this is a Alchemist than we can go further.
     if isReady() then
+	    icon:Show("TasteMsgAddonHelper")
         TasteMsgAddonHelper:WhisperBack()
         TasteMsgAddonHelper:AutoAccept()
     else
-        TasteMsgAddonHelper:Printf("|cff0070ddthis addon can only be used on a Mage character|r")
+        TasteMsgAddonHelper:Printf("|cff0070ddthis addon can only be used on a alchemist character|r")
     end
     
 end
@@ -325,7 +437,7 @@ end
 -- Code that you want to run when the addon is first loaded goes here.
 function TasteMsgAddonHelper:OnInitialize()
 
-    -- Only Init when the class is a mage.... !
+    -- Only Init when the class is a alchemist? !
     if isReady() then
         
         -- initialize saved variables
@@ -333,7 +445,7 @@ function TasteMsgAddonHelper:OnInitialize()
 
         -- initialize configuration options
         LibStub("AceConfig-3.0"):RegisterOptionsTable("TasteMsgAddonHelperDB", options)
-        self.configFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions("TasteMsgAddonHelperDB", "Mage Portal Whisper");
+        self.configFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions("TasteMsgAddonHelperDB", "Taste Silas Helper");
 
         -- create LibDataBroker
         self.ldb = LibStub("LibDataBroker-1.1"):NewDataObject("TasteMsgAddonHelper", {
@@ -355,8 +467,8 @@ function TasteMsgAddonHelper:OnInitialize()
         -- ChatFrame_AddMessageEventFilter("CHAT_MSG_YELL", NoWhisperWindow)
         -- ChatFrame_AddMessageEventFilter("CHAT_MSG_WHISPER", NoWhisperWindow)
     
-        -- Register /tmah to get the settings window.
-        self:RegisterChatCommand("tmah", "ConsoleCommand")
+        -- Register /tsh to get the settings window.
+        self:RegisterChatCommand("tsh", "ConsoleCommand")
         
 	end
     
